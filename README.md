@@ -4,7 +4,7 @@
 
 ## 课程约定
 
-- 不是一次堆出整本书。第 1 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 不是一次堆出整本书。第 1、2 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
 - 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
 - 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
 - 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
@@ -16,7 +16,7 @@
 | 阶段 | 章 | 学习内容 | 本章实战与验收 | 状态 |
 |---|---|---|---|---|
 | 建立直觉 | 01 | [Kafka 到底解决什么问题](chapters/01-why-kafka.md) | 发送 3 条订单事件；库存与分析组分别读全量；从 offset 0 重放 | 已交付 |
-| 建立直觉 | 02 | KRaft、Broker、Controller 与本地环境 | 看懂 Compose、listeners 与数据目录；验证重启后数据仍在 | 待讲 |
+| 建立直觉 | 02 | [KRaft、Broker、Controller 与本地环境](chapters/02-kraft-environment.md) | 查询控制层、验证内外声明地址；重建容器后身份与事件仍在 | 已交付 |
 | 建立直觉 | 03 | Topic、Partition、Offset 与顺序 | 建多分区 Topic；记录分区内 offset，验证没有跨分区全局顺序 | 待讲 |
 | 收发消息 | 04 | Producer、消息 key、分区与批处理 | 用 Python 发布 keyed 事件，观察同一业务 key 的分区归属 | 待讲 |
 | 收发消息 | 05 | Consumer Group 与并行消费 | 启动多个消费者与两个组，观察分配、组内分工和组间独立 | 待讲 |
@@ -51,17 +51,34 @@ bash labs/ch01-hello-kafka/verify.sh
 
 完整步骤、输出示例与停止方法见 [第 1 章实验说明](labs/ch01-hello-kafka/README.md)。每次脚本使用独立 Topic 和组 ID，不删除原有数据，也不依赖同一组的自动提交时机。
 
+## 第 2 章快速实战
+
+第 1 章环境基础上增加 Python 3.9+（只用标准库）：
+
+```bash
+bash labs/ch02-kraft-environment/verify.sh
+```
+
+脚本自动启动环境，观察 KRaft quorum、内部地址与宿主声明地址，创建唯一事件后平稳重建 Kafka 容器，再核对身份与消息保持。**这会短暂中断共享的本地 Kafka 服务，不要与其他实验同时运行。**不删除 Topic 或数据卷。
+
+完整操作、Python 路径选择、验证边界见 [第 2 章实验手册](labs/ch02-kraft-environment/README.md)。容器重建成功不代表突然断电或磁盘损毁不丢数据。
+
 ## 仓库结构
 
 ```text
 chapters/
-  01-why-kafka.md                  # 原理、图谱、自测
+  01-why-kafka.md                  # 事件日志直觉、独立消费与重放
+  02-kraft-environment.md          # 数据面、控制面、网络与持久化
 infra/single-node/
   compose.yaml                    # 第 1、2 章单节点 KRaft 学习环境
 labs/ch01-hello-kafka/
   README.md                       # 实验步骤和排错
   verify.sh                       # 可重复运行的自动验收
   events.jsonl                    # 3 条订单事件
+labs/ch02-kraft-environment/
+  README.md                       # 控制层、双地址、重建持久化实验
+  verify.sh                       # 自动环境验收
+  probe_metadata.py               # 标准库只读元数据探针与自测
 ```
 
 ## 学习环境的边界
@@ -77,8 +94,8 @@ labs/ch01-hello-kafka/
 
 ## 后续学习方式
 
-读完第 1 章并做完实验后，可以说：
+读完当前章并做完实验后，可以说：
 
-- “继续”：交付第 2 章，不跳章。
+- “继续”：交付第 3 章 Topic、Partition 与 Offset，不跳章。
 - “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
 - “我的实验报错了”：贴出错误，先排错再进入下一章。
