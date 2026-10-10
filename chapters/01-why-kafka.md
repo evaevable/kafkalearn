@@ -66,13 +66,39 @@ Kafka 不会自动判断 JSON 是否符合业务规则，也不会把事件变�
 | 术语 | 中文理解 | 在 ShopFlow 中的对应 |
 | --- | --- | --- |
 | Producer | 生产者，向 Kafka 写记录的客户端 | 订单服务或实验中的发送工具 |
-| Broker | 消息服务器，接收、存储并提供记录读取 | 本地 Kafka 服务 |
+| Broker | Kafka 服务端进程，接收、存储并提供记录读取 | 本地运行的 Kafka 服务，不等同于物理机器 |
 | Topic | 主题，一类记录的逻辑集合 | 订单事件主题 |
 | Partition | 分区，主题内部的一条有序日志 | 本章主题唯一的日志分区 |
 | Offset | 偏移量，记录在某个分区内的位置 | 分区 0 中的 0、1、2 |
 | Consumer | 消费者，读取记录的客户端 | 库存或分析程序 |
 | Consumer Group | 消费组，一组协作读取主题的消费者 | `inventory` 与 `analytics` |
 | Controller | 控制器，管理集群元数据与协调工作 | 本地 KRaft 的控制角色 |
+
+### 一个高频误解：Broker 是机器，Consumer 也是 Kafka 服务器吗？
+
+可以先把 Broker 理解成“运行 Kafka、保存消息并提供读写服务的节点”。但严格说，**Broker 是 Kafka 服务端进程或服务实例，不是物理机器本身**。它可以运行在物理机、虚拟机或容器中；本课程就是在你的电脑上用容器运行一个 Kafka 实例，它同时承担 Broker 与 Controller 角色。
+
+“机器、程序、数据”分开看就清楚了：机器提供 CPU、内存与磁盘，Broker 程序在机器或容器里运行，消息日志存放在它配置的存储位置。生产中常让不同 Broker 分散在不同机器上，但不要把“几个 Broker”直接等同于“几台物理服务器”。
+
+Consumer 则是使用 Kafka 的**客户端程序或客户端实例**，例如库存服务中的 Kafka 读取代码、Python 分析程序，或实验里的 `kafka-console-consumer.sh`。它不是另一台 Kafka Broker，也不需要和 Broker 部署在同一台机器上。业务服务能对外提供 HTTP 接口，同时在内部运行 Kafka Consumer；“服务端/客户端”是相对于这一次通信而言，不是程序永远只有一种身份。
+
+```mermaid
+sequenceDiagram
+    participant P as "Producer：订单程序"
+    participant B as "Broker：Kafka 服务端"
+    participant C as "Consumer：库存程序"
+    P->>B: "发送订单事件"
+    Note over B: "追加到分区日志并保存"
+    C->>B: "请求读取某个分区、某个 Offset 起的记录"
+    B-->>C: "返回一批记录"
+    Note over C: "应用代码根据事件执行业务处理"
+```
+
+这个时序强调：**Consumer 主动向 Broker 请求数据，Broker 返回记录**。正常消费是持续发起读取请求（可能等待新记录、批量返回），不是消费者直接打开 Broker 的磁盘文件，更不是 Broker 自动帮它执行库存业务。名字中的“消费”表示读取并使用消息，不表示把原消息吃掉或删除。
+
+拿 ShopFlow 举例：订单程序是 Producer，发布 `order.created`；Broker 保存事件；库存程序里的 Consumer 读到事件，应用代码再做相应处理。Broker 不知道怎样正确扣库存，Consumer 读取成功也不等于扣库存成功。本章的两个 CLI 消费者只是打印记录，还没有真实业务处理。
+
+你问“Broker 是不是存储 Topic 数据的机器”：**作为入门直觉可以，但准确说是负责存储该 Topic 某些分区副本并提供读写服务的 Kafka 实例。**Topic 是逻辑分类，真正保存的是 Partition 的日志与索引。同一 Broker 可以存储多个 Topic 的分区副本；一个 Topic 的分区副本也可以分散在多个 Broker 上，不是“一台 Broker 专门保存一个完整 Topic”。本章只有一个 Broker，所以本章实验 Topic 的唯一分区就在这个节点上。
 
 Topic 可以有多个 Partition。**Offset 只在所属分区中有意义，不是订单 ID，也不是整个主题的全局流水号。**定位一条记录需要同时知道主题、分区和 Offset。生产环境日志经过清理后，Offset 还可能存在空缺；不必把它当成业务计数器。
 
@@ -147,6 +173,7 @@ bash labs/ch01-hello-kafka/verify.sh
 3. Producer 收到写入确认，能否向用户承诺库存处理成功？
 4. 一个已有消费组加上 `--from-beginning`，一定会重新读取全部历史吗？
 5. 订单入库成功、发送消息失败，会丢失什么业务事实的传播？课程在哪里解决？
+6. Broker 是物理机器还是服务进程？Consumer 是 Kafka 服务端的一部分吗？谁发起读取请求，谁负责扣库存？一个 Topic 必须完整放在同一个 Broker 上吗？
 
 <details>
 <summary>展开参考答案</summary>
@@ -156,6 +183,7 @@ bash labs/ch01-hello-kafka/verify.sh
 3. 不能。确认描述 Kafka 写入这一侧的结果，不代表任何下游业务已经完成。
 4. 不一定。有可用的已提交位置时通常从该位置继续；且“开头”仅指仍保留的历史。本章用新组验证从头读取，用指定分区与位置验证直接重放。
 5. 数据库中的订单事实没有可靠传播到下游。第 11 章通过 Outbox/CDC 讨论可靠事件发布，同时还需要下游做好重复处理防护。
+6. Broker 是运行于机器或容器中的 Kafka 服务端进程/实例；Consumer 是连接它的客户端，通常在业务程序中。Consumer 发起读取，Broker 返回记录，库存应用负责业务动作。Topic 的分区副本可以分散到多个 Broker 上，一个 Broker 也可以保存多个 Topic 的分区副本。
 
 </details>
 
