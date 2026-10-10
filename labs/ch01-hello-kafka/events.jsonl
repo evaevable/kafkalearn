@@ -1,0 +1,3 @@
+{"event_id":"evt-001","event_type":"order.created","order_id":"order-1001","amount_fen":9900,"schema_version":1}
+{"event_id":"evt-002","event_type":"order.paid","order_id":"order-1002","amount_fen":19900,"schema_version":1}
+{"event_id":"evt-003","event_type":"order.cancelled","order_id":"order-1003","amount_fen":5900,"schema_version":1}

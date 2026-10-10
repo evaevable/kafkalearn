@@ -1,0 +1,84 @@
+# Kafka 逐章学习与实战
+
+从“为什么需要 Kafka”开始，逐步掌握可重放事件日志、可靠消息处理、实时数据管道与生产运维。每次只学习一章：**讲原理 → 做实验 → 核对现象 → 自测 → 再进入下一章**。
+
+## 课程约定
+
+- 不是一次堆出整本书。第 1 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
+- 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
+- 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
+- 使用现代 **KRaft** 路线，不从 ZooKeeper 部署起步。Kafka 4.x 已移除 ZooKeeper 支持；历史版本仅作为迁移背景介绍。
+- 当前可复现实验固定使用官方镜像 **`apache/kafka:4.3.1`**，不使用浮动 `latest` 或 RC。固定版本是学习基线，不代表承诺它永远是最新版或生产推荐版本。
+
+## 学习路线
+
+| 阶段 | 章 | 学习内容 | 本章实战与验收 | 状态 |
+|---|---|---|---|---|
+| 建立直觉 | 01 | [Kafka 到底解决什么问题](chapters/01-why-kafka.md) | 发送 3 条订单事件；库存与分析组分别读全量；从 offset 0 重放 | 已交付 |
+| 建立直觉 | 02 | KRaft、Broker、Controller 与本地环境 | 看懂 Compose、listeners 与数据目录；验证重启后数据仍在 | 待讲 |
+| 建立直觉 | 03 | Topic、Partition、Offset 与顺序 | 建多分区 Topic；记录分区内 offset，验证没有跨分区全局顺序 | 待讲 |
+| 收发消息 | 04 | Producer、消息 key、分区与批处理 | 用 Python 发布 keyed 事件，观察同一业务 key 的分区归属 | 待讲 |
+| 收发消息 | 05 | Consumer Group 与并行消费 | 启动多个消费者与两个组，观察分配、组内分工和组间独立 | 待讲 |
+| 收发消息 | 06 | Offset 提交、重启与重复消费 | 对比先提交/后处理与先处理/后提交，复现丢处理和重复 | 待讲 |
+| 收发消息 | 07 | Rebalance、超时与消费者生命周期 | 停止、扩容消费者，观察分区重新分配和处理暂停 | 待讲 |
+| 可靠性 | 08 | 副本、Leader、ISR、acks 与故障 | 三节点实验：停掉 Leader，核对可用性和写入边界 | 待讲 |
+| 可靠性 | 09 | 日志段、保留、压缩与磁盘 | 分别观察 delete 与 compact；辨析 compact 不是即时去重 | 待讲 |
+| 可靠性 | 10 | At-most/at-least/exactly-once 与事务 | 幂等生产、事务可见性；说明外部数据库不自动参与 Kafka 事务 | 待讲 |
+| 数据管道 | 11 | 业务幂等、Outbox 与 CDC | 复现数据库/Kafka 双写缺口，再实现事务 Outbox 和去重消费 | 待讲 |
+| 数据管道 | 12 | 消息契约、Schema 演进与 Kafka Connect | 增加字段、处理旧消息、构建数据接入链路 | 待讲 |
+| 数据管道 | 13 | 实时分析、窗口、迟到与状态 | 汇总订单计数、乱序实验；辨析事件时间和处理时间 | 待讲 |
+| 生产实践 | 14 | Lag、监控、背压与性能调优 | 制造消费积压，用指标定位慢消费者；跑基准而不是背“最佳参数” | 待讲 |
+| 生产实践 | 15 | TLS、认证、ACL 与上线检查 | 验证允许/拒绝的生产消费操作，形成上线清单 | 待讲 |
+| 综合验收 | 16 | ShopFlow 端到端总实战与故障演练 | 事件发布、库存处理、分析聚合、去重、重放、故障恢复全链路验收 | 待讲 |
+
+后续章节的代码随课程进度交付，上表是学习计划，不是“已完成”功能清单。
+
+## 第 1 章快速实战
+
+前置：Docker Engine 正常运行，且支持 `docker compose` v2（建议 v2.20+）。macOS 可以使用 Docker Desktop 或 Colima。无需先安装宿主机 Java，Kafka 和 CLI 均运行在容器内。
+
+在仓库根目录执行：
+
+```bash
+docker compose -f infra/single-node/compose.yaml up -d --wait
+bash labs/ch01-hello-kafka/verify.sh
+```
+
+如果本机仅有独立的 Compose v2 命令，将第一条中的 `docker compose` 替换成 `docker-compose`；验收脚本自动兼容两者。
+
+成功应显示 `PASS`：生产 3 条记录，`inventory` 和 `analytics` 两个独立消费组各读取相同的 3 条记录，并从分区 0 / offset 0 再读出全部事件。
+
+完整步骤、输出示例与停止方法见 [第 1 章实验说明](labs/ch01-hello-kafka/README.md)。每次脚本使用独立 Topic 和组 ID，不删除原有数据，也不依赖同一组的自动提交时机。
+
+## 仓库结构
+
+```text
+chapters/
+  01-why-kafka.md                  # 原理、图谱、自测
+infra/single-node/
+  compose.yaml                    # 第 1、2 章单节点 KRaft 学习环境
+labs/ch01-hello-kafka/
+  README.md                       # 实验步骤和排错
+  verify.sh                       # 可重复运行的自动验收
+  events.jsonl                    # 3 条订单事件
+```
+
+## 学习环境的边界
+
+单节点、单副本、PLAINTEXT 只用于本地入门实验，没有高可用或生产安全保证。服务宿主端口只绑定 `127.0.0.1:19092`，不向局域网开放。正常停止保留命名数据卷，不默认删除卷；每次实验新建少量 Topic，长期练习时需要按明确清单自行清理实验数据。
+
+## 参考资料
+
+- [Apache Kafka 官方文档](https://kafka.apache.org/documentation/)
+- [Apache Kafka 下载与发布信息](https://kafka.apache.org/downloads/)
+- [官方 Docker 使用指南](https://github.com/apache/kafka/blob/trunk/docker/README.md)
+- [固定实验镜像](https://hub.docker.com/r/apache/kafka/tags?name=4.3.1)
+
+## 后续学习方式
+
+读完第 1 章并做完实验后，可以说：
+
+- “继续”：交付第 2 章，不跳章。
+- “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
+- “我的实验报错了”：贴出错误，先排错再进入下一章。
