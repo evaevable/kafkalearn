@@ -4,7 +4,7 @@
 
 ## 课程约定
 
-- 不是一次堆出整本书。第 1～5 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 不是一次堆出整本书。第 1～6 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
 - 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
 - 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
 - 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
@@ -20,7 +20,7 @@
 | 建立直觉 | 03 | [Topic、Partition、Offset 与顺序](chapters/03-topic-partition-offset.md) | 三分区发送6条keyed事件；核对位置与精确读取，展示跨分区遍历边界 | 已交付 |
 | 收发消息 | 04 | [Producer、消息 key、分区与批处理](chapters/04-producer-key-batching.md) | Python 实际投递回读；key路由对齐；逐条flush与集中入队的真实批次/请求对照 | 已交付 |
 | 收发消息 | 05 | [Consumer Group 与并行消费](chapters/05-consumer-groups.md) | 6进程真实订阅；库存4成员/分析2成员，各组完整读取12条，验证分区归属与空闲成员 | 已交付 |
-| 收发消息 | 06 | Offset 提交、重启与重复消费 | 对比先提交/后处理与先处理/后提交，复现丢处理和重复 | 待讲 |
+| 收发消息 | 06 | [Offset 提交、重启与重复消费](chapters/06-offset-commits.md) | 四组真实消费进程中断/同组恢复；核对书签、漏处理与重复，消息仍保留 | 已交付 |
 | 收发消息 | 07 | Rebalance、超时与消费者生命周期 | 停止、扩容消费者，观察分区重新分配和处理暂停 | 待讲 |
 | 可靠性 | 08 | 副本、Leader、ISR、acks 与故障 | 三节点实验：停掉 Leader，核对可用性和写入边界 | 待讲 |
 | 可靠性 | 09 | 日志段、保留、压缩与磁盘 | 分别观察 delete 与 compact；辨析 compact 不是即时去重 | 待讲 |
@@ -95,6 +95,16 @@ PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch05-consumer-groups/verify.sh
 
 启动库存组4个、分析组2个独立 Consumer 进程，用 subscribe 真正参加分配。稳定后发布12条订单事件，每组各读12条：库存4/4/4/0，分析8/4。保存成员仍在线时的 Admin/CLI 分区证据；关闭自动提交、不显式commit，稳定无重复不代表故障恢复 exactly-once。详见 [第 5 章实验手册](labs/ch05-consumer-groups/README.md)。
 
+## 第 6 章快速实战
+
+复用固定客户端虚拟环境（首次运行先安装本章 requirements.txt）：
+
+```bash
+PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch06-offset-commits/verify.sh
+```
+
+一个全新单分区 Topic 三条事件，四个独立消费组。首轮消费者在精确位置硬退出，新进程同组 subscribe 恢复，验证未提交重读、先提交漏处理、先处理重复，以及处理后提交的正常窗口。最后四组都提交3、Lag0，但先提交组仍缺一次模拟业务处理。仅中断本实验子进程，不杀Broker，不删数据。完整证据和边界见 [第 6 章实验手册](labs/ch06-offset-commits/README.md)。
+
 ## 仓库结构
 
 ```text
@@ -104,8 +114,9 @@ chapters/
   03-topic-partition-offset.md     # 日志分片、坐标、key 与顺序
   04-producer-key-batching.md      # 异步投递、序列化、批次与背压
   05-consumer-groups.md            # 同组分工、组间独立、分区分配
+  06-offset-commits.md             # 读取、处理与恢复书签，失败窗口
 infra/single-node/
-  compose.yaml                    # 第 1～5 章单节点 KRaft 学习环境
+  compose.yaml                    # 第 1～6 章单节点 KRaft 学习环境
 labs/ch01-hello-kafka/
   README.md                       # 实验步骤和排错
   verify.sh                       # 可重复运行的自动验收
@@ -128,6 +139,11 @@ labs/ch05-consumer-groups/
   requirements.txt                # 复用固定客户端依赖
   app.py                          # 多进程订阅、管理查询、完整性断言
   verify.sh                       # 独立 Topic 与两个组的完整验收
+labs/ch06-offset-commits/
+  README.md                       # 四个中断窗口、提交与模拟副作用
+  requirements.txt                # 固定客户端依赖
+  app.py                          # 真实子进程退出/恢复与进度核对
+  verify.sh                       # 独立 Topic 与四组的完整验收
 ```
 
 ## 学习环境的边界
@@ -145,6 +161,6 @@ labs/ch05-consumer-groups/
 
 读完当前章并做完实验后，可以说：
 
-- “继续”：交付第 6 章 Offset 提交、重启与重复消费，不跳章。
+- “继续”：交付第 7 章 Rebalance、超时与消费者生命周期，不跳章。
 - “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
 - “我的实验报错了”：贴出错误，先排错再进入下一章。
