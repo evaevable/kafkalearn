@@ -100,6 +100,50 @@ flowchart LR
 
 边界也要记：这次是**正常停机**，选主很快；断电或崩溃要等心跳超时（第 7 章那套）。ISR 也可能因副本落后而缩小，不是永远三份。更不是"绝对不丢"。
 
+## 附：一条数据从写到读的全程
+
+把前面几章串成一条线：
+
+```mermaid
+flowchart TB
+    subgraph CLIENT["客户端"]
+        A["应用 produce(key, value)"] --> B["序列化：变成字节"]
+        B --> C["分区器：选出 P0"]
+        C --> D["批次缓冲：按分区攒批"]
+    end
+    subgraph CLUSTER["集群"]
+        E["P0 的 Leader Broker"] --> F["P0 分区日志段"]
+        F -.->|"复制"| G["Follower 副本（ISR）"]
+        H["Controller：决定 Leader"] -.->|"元数据"| E
+    end
+    subgraph CONSUMER["消费端"]
+        I["Consumer.poll()"] --> J["Group Coordinator：分工"]
+        J --> K["按书签向 Leader 拉取"]
+        K --> L["处理 + 提交 offset"]
+    end
+    D -->|"Produce 请求"| E
+    F -->|"Fetch 返回"| K
+```
+
+1. 应用调用 `produce(key, value)`；序列化器把两者变成字节。
+2. 分区器按 key 选出 P0（同 key 通常同分区），记录进入按分区组织的批次缓冲。
+3. 客户端查元数据，找到 P0 的 **Leader** 在哪台 Broker，发出 Produce 请求。
+4. Leader 把记录追加到**日志段**；**Follower** 向 Leader 拉取，跟得上进度的进入 **ISR**。
+5. `acks=all` 时，ISR 确认后回调才报成功；`min.insync.replicas` 不够则明确拒写。
+6. 消费端 `poll()` 入组；**Group Coordinator** 分配分区，并保存各组的提交位置。
+7. Consumer 从**书签**位置向 P0 的 Leader 拉取记录，处理成功后再提交下一位置。
+8. 日志删除由**保留策略**按时间/容量执行，与“有没有被消费”无关。
+
+| 组件 | 一句话职责 |
+| --- | --- |
+| Producer | 组织记录、选分区、发送并处理回调 |
+| Serializer / Partitioner | 变成字节；决定去哪个分区 |
+| Controller | 管理元数据、决定分区 Leader，不搬消息 |
+| Broker（Leader / Follower） | 存日志、接待读写、复制副本 |
+| Group Coordinator | 组内分工、保存提交位置 |
+| `__consumer_offsets` | 存放各组的书签 |
+| 保留策略 | 按时间/容量删除旧日志段 |
+
 ## 【积木 8-8】自测
 
 1. 副本和分区是什么关系？RF=3 是三条分区吗？
