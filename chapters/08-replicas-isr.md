@@ -13,15 +13,25 @@
 
 ```mermaid
 flowchart TB
-    subgraph CL["三节点集群"]
-        K1["Broker 1：各分区的副本"]
-        K2["Broker 2：各分区的副本"]
-        K3["Broker 3：各分区的副本"]
+    subgraph CL["三节点集群：P0 的三份副本分散存放"]
+        K1["Broker 1：P0 的 Leader 副本"]
+        K2["Broker 2：P0 的 Follower 副本"]
+        K3["Broker 3：P0 的 Follower 副本"]
     end
-    P0["分区 P0：三份副本，其中一份是 Leader"] --> K1
-    P0 --> K2
-    P0 --> K3
+    C["客户端：Producer 写 / Consumer 读"] -->|"只找 Leader"| K1
+    K1 -.->|"复制"| K2
+    K1 -.->|"复制"| K3
 ```
+
+这张图别读反：**不是分区把数据“写给” Broker，而是分区的副本就住在 Broker 的磁盘上。**
+
+- 分区 P0 是数据单位，它不飘在网络里。
+- P0 的 Leader 副本在 Broker 1 上，两个 Follower 副本在 2、3 上。
+- 客户端说“读 P0”，实际动作是：先查元数据，找到 P0 的 Leader 在哪台 Broker，再去那台机器读。
+
+所以“读分区”和“读 Broker”不是二选一：**读的是分区，落点是存着它 Leader 的那台 Broker**。Broker 负责存放和服务读写，它自己不消费数据。
+
+多 Broker 的作用也不只是高可用：不同分区的 Leader 可以分散到不同机器，分担存储和读写压力；只有再叠加**多副本**，才获得“挂一台还能活”的高可用。3 台 Broker 但 RF=1，挂了照样不可用。
 
 ## 【积木 8-2】acks：写到几份才算"成功"？
 
