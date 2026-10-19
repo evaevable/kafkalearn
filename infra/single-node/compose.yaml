@@ -23,6 +23,8 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_NUM_PARTITIONS: "1"
       KAFKA_LOG_RETENTION_HOURS: "168"
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: "2000"
+      KAFKA_LOG_CLEANER_BACKOFF_MS: "2000"
       KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
     volumes:
       - kafka-data:/var/lib/kafka/data

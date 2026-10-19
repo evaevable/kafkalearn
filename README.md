@@ -4,7 +4,7 @@
 
 ## 课程约定
 
-- 不是一次堆出整本书。第 1～8 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 不是一次堆出整本书。第 1～9 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
 - 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
 - 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
 - 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
@@ -23,7 +23,7 @@
 | 收发消息 | 06 | [Offset 提交、重启与重复消费](chapters/06-offset-commits.md) | 四组真实消费进程中断/同组恢复；核对书签、漏处理与重复，消息仍保留 | 已交付 |
 | 收发消息 | 07 | [Rebalance、超时与消费者生命周期](chapters/07-rebalance-lifecycle.md) | 三次真实换班：加入约2秒、猝死约6秒(会话超时)、正常下班约0.8秒；换班+无书签=重读 | 已交付 |
 | 可靠性 | 08 | [副本、Leader、ISR 与故障](chapters/08-replicas-isr.md) | 三节点集群停一台 Broker：约3.4秒选新Leader、ISR 3→2、写入继续；RF=2 对照拒写 | 已交付 |
-| 可靠性 | 09 | 日志段、保留、压缩与磁盘 | 分别观察 delete 与 compact；辨析 compact 不是即时去重 | 待讲 |
+| 可靠性 | 09 | [日志段、保留与 compact](chapters/09-log-segments-compaction.md) | 观察 delete 整段淘汰与 compact 保留最新值；对照 180 条读回差异 | 已交付 |
 | 可靠性 | 10 | At-most/at-least/exactly-once 与事务 | 幂等生产、事务可见性；说明外部数据库不自动参与 Kafka 事务 | 待讲 |
 | 数据管道 | 11 | 业务幂等、Outbox 与 CDC | 复现数据库/Kafka 双写缺口，再实现事务 Outbox 和去重消费 | 待讲 |
 | 数据管道 | 12 | 消息契约、Schema 演进与 Kafka Connect | 增加字段、处理旧消息、构建数据接入链路 | 待讲 |
@@ -125,6 +125,14 @@ PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch08-replicas-isr/verify.sh
 
 实验创建 RF=3 的主 Topic 和 RF=2、要求 2 份确认的小 Topic。停掉一台 Broker 后：新 Leader 约 3.4 秒选出、ISR 3→2、主 Topic 继续读写（9 条全在）；小 Topic 写入被拒 `NOT_ENOUGH_REPLICAS`、读取正常；重启后约 3.6 秒 ISR 恢复。只停一台、保留控制器多数派，不是断电实验。详见 [第 8 章实验手册](labs/ch08-replicas-isr/README.md)。
 
+## 第 9 章快速实战
+
+```bash
+PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch09-log-segments-compaction/verify.sh
+```
+
+实验创建 90 条消息的三个日志段，等保留策略把最老的整段删掉：段数 3→2，最早可读 offset 0→30。第二个对照写 180 条到普通 Topic 与 compact Topic：普通 Topic 读到 180 条，compact 后读到 63 条，三个 key 都保留最新值。为了几十秒内看到效果，Compose 把清理检查间隔调成了 2 秒；生产默认更慢。详见 [第 9 章实验手册](labs/ch09-log-segments-compaction/README.md)。
+
 ## 仓库结构
 
 ```text
@@ -137,8 +145,9 @@ chapters/
   06-offset-commits.md             # 读取、处理与恢复书签，失败窗口
   07-rebalance-lifecycle.md        # 换班时机、交接过程与两种离开方式
   08-replicas-isr.md               # 副本、Leader、ISR 与停 Broker 实测
+  09-log-segments-compaction.md    # 日志段、保留删除与 compact 实测
 infra/single-node/
-  compose.yaml                    # 第 1～7 章单节点 KRaft 学习环境
+  compose.yaml                    # 第 1～7、9 章单节点 KRaft 学习环境
 infra/three-nodes/
   compose.yaml                    # 第 8 章三节点副本与故障实验环境
 labs/ch01-hello-kafka/
@@ -178,6 +187,11 @@ labs/ch08-replicas-isr/
   requirements.txt                # 固定客户端依赖
   app.py                          # 副本/ISR 断言、停启 Broker 与验收
   verify.sh                       # 三节点集群完整验收
+labs/ch09-log-segments-compaction/
+  README.md                       # 段删除、compact 对照与观察方法
+  requirements.txt                # 固定客户端依赖
+  app.py                          # 分段写入、保留/compact 断言与自测
+  verify.sh                       # 单节点清理实验完整验收
 ```
 
 ## 学习环境的边界
@@ -195,6 +209,6 @@ labs/ch08-replicas-isr/
 
 读完当前章并做完实验后，可以说：
 
-- “继续”：交付第 9 章 日志段、保留、压缩与磁盘，不跳章。
+- “继续”：交付第 10 章 At-most/at-least/exactly-once 与事务，不跳章。
 - “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
 - “我的实验报错了”：贴出错误，先排错再进入下一章。
