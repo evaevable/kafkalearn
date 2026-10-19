@@ -4,7 +4,7 @@
 
 ## 课程约定
 
-- 不是一次堆出整本书。第 1～7 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 不是一次堆出整本书。第 1～8 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
 - 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
 - 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
 - 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
@@ -22,7 +22,7 @@
 | 收发消息 | 05 | [Consumer Group 与并行消费](chapters/05-consumer-groups.md) | 6进程真实订阅；库存4成员/分析2成员，各组完整读取12条，验证分区归属与空闲成员 | 已交付 |
 | 收发消息 | 06 | [Offset 提交、重启与重复消费](chapters/06-offset-commits.md) | 四组真实消费进程中断/同组恢复；核对书签、漏处理与重复，消息仍保留 | 已交付 |
 | 收发消息 | 07 | [Rebalance、超时与消费者生命周期](chapters/07-rebalance-lifecycle.md) | 三次真实换班：加入约2秒、猝死约6秒(会话超时)、正常下班约0.8秒；换班+无书签=重读 | 已交付 |
-| 可靠性 | 08 | 副本、Leader、ISR、acks 与故障 | 三节点实验：停掉 Leader，核对可用性和写入边界 | 待讲 |
+| 可靠性 | 08 | [副本、Leader、ISR 与故障](chapters/08-replicas-isr.md) | 三节点集群停一台 Broker：约3.4秒选新Leader、ISR 3→2、写入继续；RF=2 对照拒写 | 已交付 |
 | 可靠性 | 09 | 日志段、保留、压缩与磁盘 | 分别观察 delete 与 compact；辨析 compact 不是即时去重 | 待讲 |
 | 可靠性 | 10 | At-most/at-least/exactly-once 与事务 | 幂等生产、事务可见性；说明外部数据库不自动参与 Kafka 事务 | 待讲 |
 | 数据管道 | 11 | 业务幂等、Outbox 与 CDC | 复现数据库/Kafka 双写缺口，再实现事务 Outbox 和去重消费 | 待讲 |
@@ -115,6 +115,16 @@ PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch07-rebalance-lifecycle/verify.sh
 
 脚本导演三次真实换班：一个人独自干活 → 加入一人（分区分成2+1）→ 有人猝死（等约6秒会话超时才换班）→ 有人正常下班（约0.8秒完成换班）。全程不提交书签，6条消息累计被读30次，直观展示"换班+没书签=重复读取"。只中断实验自己的消费者进程，不动Broker、不删数据。运行中有一段约6秒的超时等待属预期节奏。细节见 [第 7 章实验手册](labs/ch07-rebalance-lifecycle/README.md)。
 
+## 第 8 章快速实战
+
+这一章第一次启动三节点集群（端口 19192/29292/39392），复用固定客户端虚拟环境：
+
+```bash
+PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch08-replicas-isr/verify.sh
+```
+
+实验创建 RF=3 的主 Topic 和 RF=2、要求 2 份确认的小 Topic。停掉一台 Broker 后：新 Leader 约 3.4 秒选出、ISR 3→2、主 Topic 继续读写（9 条全在）；小 Topic 写入被拒 `NOT_ENOUGH_REPLICAS`、读取正常；重启后约 3.6 秒 ISR 恢复。只停一台、保留控制器多数派，不是断电实验。详见 [第 8 章实验手册](labs/ch08-replicas-isr/README.md)。
+
 ## 仓库结构
 
 ```text
@@ -126,8 +136,11 @@ chapters/
   05-consumer-groups.md            # 同组分工、组间独立、分区分配
   06-offset-commits.md             # 读取、处理与恢复书签，失败窗口
   07-rebalance-lifecycle.md        # 换班时机、交接过程与两种离开方式
+  08-replicas-isr.md               # 副本、Leader、ISR 与停 Broker 实测
 infra/single-node/
   compose.yaml                    # 第 1～7 章单节点 KRaft 学习环境
+infra/three-nodes/
+  compose.yaml                    # 第 8 章三节点副本与故障实验环境
 labs/ch01-hello-kafka/
   README.md                       # 实验步骤和排错
   verify.sh                       # 可重复运行的自动验收
@@ -160,11 +173,16 @@ labs/ch07-rebalance-lifecycle/
   requirements.txt                # 固定客户端依赖
   app.py                          # 多进程换班编排、生命周期记录与断言
   verify.sh                       # 独立 Topic 与组的完整验收
+labs/ch08-replicas-isr/
+  README.md                       # 三节点、停 Broker 与对照实验
+  requirements.txt                # 固定客户端依赖
+  app.py                          # 副本/ISR 断言、停启 Broker 与验收
+  verify.sh                       # 三节点集群完整验收
 ```
 
 ## 学习环境的边界
 
-单节点、单副本、PLAINTEXT 只用于本地入门实验，没有高可用或生产安全保证。服务宿主端口只绑定 `127.0.0.1:19092`，不向局域网开放。正常停止保留命名数据卷，不默认删除卷；每次实验新建少量 Topic，长期练习时需要按明确清单自行清理实验数据。
+单节点、单副本、PLAINTEXT 只用于本地入门实验，没有高可用或生产安全保证。第 8 章的三节点环境同样只用于本地教学：宿主端口 19192/29292/39392 仅绑定 127.0.0.1，实验只停一台 Broker，不代表生产容灾演练。正常停止保留命名数据卷，不默认删除卷；每次实验新建少量 Topic，长期练习时需要按明确清单自行清理实验数据。
 
 ## 参考资料
 
@@ -177,6 +195,6 @@ labs/ch07-rebalance-lifecycle/
 
 读完当前章并做完实验后，可以说：
 
-- “继续”：交付第 8 章 副本、Leader、ISR、acks 与故障，不跳章。
+- “继续”：交付第 9 章 日志段、保留、压缩与磁盘，不跳章。
 - “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
 - “我的实验报错了”：贴出错误，先排错再进入下一章。
