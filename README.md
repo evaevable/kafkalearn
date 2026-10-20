@@ -4,7 +4,7 @@
 
 ## 课程约定
 
-- 不是一次堆出整本书。第 1～9 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 不是一次堆出整本书。第 1～10 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
 - 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
 - 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
 - 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
@@ -24,7 +24,7 @@
 | 收发消息 | 07 | [Rebalance、超时与消费者生命周期](chapters/07-rebalance-lifecycle.md) | 三次真实换班：加入约2秒、猝死约6秒(会话超时)、正常下班约0.8秒；换班+无书签=重读 | 已交付 |
 | 可靠性 | 08 | [副本、Leader、ISR 与故障](chapters/08-replicas-isr.md) | 三节点集群停一台 Broker：约3.4秒选新Leader、ISR 3→2、写入继续；RF=2 对照拒写 | 已交付 |
 | 可靠性 | 09 | [日志段、保留与 compact](chapters/09-log-segments-compaction.md) | 观察 delete 整段淘汰与 compact 保留最新值；对照 180 条读回差异 | 已交付 |
-| 可靠性 | 10 | At-most/at-least/exactly-once 与事务 | 幂等生产、事务可见性；说明外部数据库不自动参与 Kafka 事务 | 待讲 |
+| 可靠性 | 10 | [At-most/at-least/exactly-once 与事务](chapters/10-exactly-once-transactions.md) | 对比 read_committed/read_uncommitted；验证 EOS 闭环与幂等边界 | 已交付 |
 | 数据管道 | 11 | 业务幂等、Outbox 与 CDC | 复现数据库/Kafka 双写缺口，再实现事务 Outbox 和去重消费 | 待讲 |
 | 数据管道 | 12 | 消息契约、Schema 演进与 Kafka Connect | 增加字段、处理旧消息、构建数据接入链路 | 待讲 |
 | 数据管道 | 13 | 实时分析、窗口、迟到与状态 | 汇总订单计数、乱序实验；辨析事件时间和处理时间 | 待讲 |
@@ -133,6 +133,14 @@ PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch09-log-segments-compaction/verify
 
 实验创建 90 条消息的三个日志段，等保留策略把最老的整段删掉：段数 3→2，最早可读 offset 0→30。第二个对照写 180 条到普通 Topic 与 compact Topic：普通 Topic 读到 180 条，compact 后读到 63 条，三个 key 都保留最新值。为了几十秒内看到效果，Compose 把清理检查间隔调成了 2 秒；生产默认更慢。详见 [第 9 章实验手册](labs/ch09-log-segments-compaction/README.md)。
 
+## 第 10 章快速实战
+
+```bash
+PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch10-exactly-once-transactions/verify.sh
+```
+
+实验先提交 3 条、回滚 2 条：`read_committed` 只读到 3 条，`read_uncommitted` 读到 5 条（回滚记录在 offset 4、5，3 被提交标记占用）。随后验证幂等生产者不会合并两次应用发送（仍为 2 条），以及读-处理-写事务：source 读 3 条、sink 写 3 条、提交 offset=3，重启同组再读 0 条。单节点实验，只覆盖 Kafka 内部，不包含数据库等外部副作用。详见 [第 10 章实验手册](labs/ch10-exactly-once-transactions/README.md)。
+
 ## 仓库结构
 
 ```text
@@ -146,6 +154,7 @@ chapters/
   07-rebalance-lifecycle.md        # 换班时机、交接过程与两种离开方式
   08-replicas-isr.md               # 副本、Leader、ISR 与停 Broker 实测
   09-log-segments-compaction.md    # 日志段、保留删除与 compact 实测
+  10-exactly-once-transactions.md  # 三种语义、事务可见性与 EOS 闭环
 infra/single-node/
   compose.yaml                    # 第 1～7、9 章单节点 KRaft 学习环境
 infra/three-nodes/
@@ -192,6 +201,11 @@ labs/ch09-log-segments-compaction/
   requirements.txt                # 固定客户端依赖
   app.py                          # 分段写入、保留/compact 断言与自测
   verify.sh                       # 单节点清理实验完整验收
+labs/ch10-exactly-once-transactions/
+  README.md                       # 事务可见性、幂等边界与 EOS
+  requirements.txt                # 固定客户端依赖
+  app.py                          # 事务提交/回滚、隔离级别与 EOS 断言
+  verify.sh                       # 单节点事务实验完整验收
 ```
 
 ## 学习环境的边界
@@ -209,6 +223,6 @@ labs/ch09-log-segments-compaction/
 
 读完当前章并做完实验后，可以说：
 
-- “继续”：交付第 10 章 At-most/at-least/exactly-once 与事务，不跳章。
+- “继续”：交付第 11 章 业务幂等、Outbox 与 CDC，不跳章。
 - “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
 - “我的实验报错了”：贴出错误，先排错再进入下一章。
