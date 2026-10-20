@@ -4,7 +4,7 @@
 
 ## 课程约定
 
-- 不是一次堆出整本书。第 1～10 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
+- 不是一次堆出整本书。第 1～11 章已交付；回到对话说“继续”，再讲、写、验证和推送下一章。
 - 每章包含：学习目标、分块讲解、图谱、可运行实战、预期现象、常见错误、自测与答案。
 - 贯穿案例 **ShopFlow**：订单服务发布事件，库存与分析服务独立消费；后续加入可靠落库、去重、CDC 和实时分析。
 - 先用 CLI 看清 Kafka，再引入应用代码。应用客户端优先用 Python（方便分析实验），协议与原理不绑定语言；Kafka Streams 的特有能力会单独说明。
@@ -25,7 +25,7 @@
 | 可靠性 | 08 | [副本、Leader、ISR 与故障](chapters/08-replicas-isr.md) | 三节点集群停一台 Broker：约3.4秒选新Leader、ISR 3→2、写入继续；RF=2 对照拒写 | 已交付 |
 | 可靠性 | 09 | [日志段、保留与 compact](chapters/09-log-segments-compaction.md) | 观察 delete 整段淘汰与 compact 保留最新值；对照 180 条读回差异 | 已交付 |
 | 可靠性 | 10 | [At-most/at-least/exactly-once 与事务](chapters/10-exactly-once-transactions.md) | 对比 read_committed/read_uncommitted；验证 EOS 闭环与幂等边界 | 已交付 |
-| 数据管道 | 11 | 业务幂等、Outbox 与 CDC | 复现数据库/Kafka 双写缺口，再实现事务 Outbox 和去重消费 | 待讲 |
+| 数据管道 | 11 | [业务幂等、Outbox 与 CDC](chapters/11-outbox-cdc.md) | 复现双写缺口；Outbox 原子落库、中继重试重复、幂等消费只生效一次 | 已交付 |
 | 数据管道 | 12 | 消息契约、Schema 演进与 Kafka Connect | 增加字段、处理旧消息、构建数据接入链路 | 待讲 |
 | 数据管道 | 13 | 实时分析、窗口、迟到与状态 | 汇总订单计数、乱序实验；辨析事件时间和处理时间 | 待讲 |
 | 生产实践 | 14 | Lag、监控、背压与性能调优 | 制造消费积压，用指标定位慢消费者；跑基准而不是背“最佳参数” | 待讲 |
@@ -141,6 +141,14 @@ PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch10-exactly-once-transactions/veri
 
 实验先提交 3 条、回滚 2 条：`read_committed` 只读到 3 条，`read_uncommitted` 读到 5 条（回滚记录在 offset 4、5，3 被提交标记占用）。随后验证幂等生产者不会合并两次应用发送（仍为 2 条），以及读-处理-写事务：source 读 3 条、sink 写 3 条、提交 offset=3，重启同组再读 0 条。单节点实验，只覆盖 Kafka 内部，不包含数据库等外部副作用。详见 [第 10 章实验手册](labs/ch10-exactly-once-transactions/README.md)。
 
+## 第 11 章快速实战
+
+```bash
+PYTHON_BIN="$PWD/.venv/bin/python" bash labs/ch11-outbox-cdc/verify.sh
+```
+
+实验用 SQLite 模拟业务库：先制造“有订单没事件”和“有事件没订单”两个缺口；再用 Outbox 在同一事务写订单和待发事件；中继发送后崩溃重试，Topic 出现 2 条重复，幂等消费只扣 1 次库存。崩溃为异常模拟，不是真断电；CDC 只讲原理，未部署 Debezium。详见 [第 11 章实验手册](labs/ch11-outbox-cdc/README.md)。
+
 ## 仓库结构
 
 ```text
@@ -155,6 +163,7 @@ chapters/
   08-replicas-isr.md               # 副本、Leader、ISR 与停 Broker 实测
   09-log-segments-compaction.md    # 日志段、保留删除与 compact 实测
   10-exactly-once-transactions.md  # 三种语义、事务可见性与 EOS 闭环
+  11-outbox-cdc.md                 # 双写缺口、Outbox 中继与幂等消费
 infra/single-node/
   compose.yaml                    # 第 1～7、9 章单节点 KRaft 学习环境
 infra/three-nodes/
@@ -206,6 +215,11 @@ labs/ch10-exactly-once-transactions/
   requirements.txt                # 固定客户端依赖
   app.py                          # 事务提交/回滚、隔离级别与 EOS 断言
   verify.sh                       # 单节点事务实验完整验收
+labs/ch11-outbox-cdc/
+  README.md                       # 双写缺口、Outbox 中继与去重
+  requirements.txt                # 固定客户端依赖
+  app.py                          # SQLite 事务、模拟崩溃与幂等消费断言
+  verify.sh                       # 单节点 Outbox 实验完整验收
 ```
 
 ## 学习环境的边界
@@ -223,6 +237,6 @@ labs/ch10-exactly-once-transactions/
 
 读完当前章并做完实验后，可以说：
 
-- “继续”：交付第 11 章 业务幂等、Outbox 与 CDC，不跳章。
+- “继续”：交付第 12 章 消息契约、Schema 演进与 Kafka Connect，不跳章。
 - “我没看懂 offset”：先解释、举例；必要时补入对应章节并推送。
 - “我的实验报错了”：贴出错误，先排错再进入下一章。
